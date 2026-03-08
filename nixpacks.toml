@@ -8,8 +8,5 @@ cmds = [
 
 [start]
 cmd = "node server.js"
-```
 
-And add this to Railway's **Variables** tab:
-```
 YOUTUBE_DL_SKIP_PYTHON_CHECK=1
