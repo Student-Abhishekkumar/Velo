@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "ffmpeg"]
+nixPkgs = ["nodejs_20", "python311", "ffmpeg"]
 
 [phases.install]
 cmds = [
@@ -8,3 +8,8 @@ cmds = [
 
 [start]
 cmd = "node server.js"
+```
+
+And add this to Railway's **Variables** tab:
+```
+YOUTUBE_DL_SKIP_PYTHON_CHECK=1
