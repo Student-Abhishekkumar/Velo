@@ -1,13 +1,15 @@
 const express = require('express');
-const ytDlp = require('youtube-dl-exec');
+const { spawn } = require('child_process');
 const path = require('path');
+const ytDlp = require('youtube-dl-exec');
 
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 3000;
+
+const ytDlpBin = require.resolve('youtube-dl-exec/bin/yt-dlp');
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── GET /api/info?url=... ───────────────────────────────────────────────────
 app.get('/api/info', async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: 'Missing url' });
@@ -27,7 +29,9 @@ app.get('/api/info', async (req, res) => {
     const m = Math.floor((secs % 3600) / 60);
     const s = Math.floor(secs % 60);
     const duration = secs > 0
-      ? (h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`)
+      ? (h > 0
+          ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+          : `${m}:${String(s).padStart(2,'0')}`)
       : '—';
 
     res.json({
@@ -40,11 +44,11 @@ app.get('/api/info', async (req, res) => {
     const msg = err.message || '';
     if (msg.includes('Unsupported URL')) return res.status(400).json({ error: 'This URL is not supported.' });
     if (msg.includes('Private'))         return res.status(400).json({ error: 'This video is private.' });
+    console.error('info error:', msg);
     res.status(500).json({ error: 'Could not fetch video info.' });
   }
 });
 
-// ─── GET /api/download?url=...&fmt=... ───────────────────────────────────────
 app.get('/api/download', (req, res) => {
   const { url, fmt = 'mp4' } = req.query;
   if (!url) return res.status(400).json({ error: 'Missing url' });
@@ -64,17 +68,14 @@ app.get('/api/download', (req, res) => {
 
   const extMap  = { mp3: 'mp3', wav: 'wav', webm: 'webm' };
   const mimeMap = { mp3: 'audio/mpeg', wav: 'audio/wav', webm: 'video/webm' };
-  const ext  = extMap[fmt]  || 'mp4';
-  const mime = mimeMap[fmt] || 'video/mp4';
+  const ext     = extMap[fmt]  || 'mp4';
+  const mime    = mimeMap[fmt] || 'video/mp4';
   const fmtArgs = formatMap[fmt] || formatMap.mp4;
   const audioFormats = ['mp3', 'wav'];
   const mergeArgs = audioFormats.includes(fmt) ? [] : ['--merge-output-format', ext === 'mp4' ? 'mp4' : ext];
 
   res.setHeader('Content-Disposition', `attachment; filename="video.${ext}"`);
   res.setHeader('Content-Type', mime);
-
-  const { path: ytDlpPath } = require('youtube-dl-exec');
-  const { spawn } = require('child_process');
 
   const args = [
     ...fmtArgs,
@@ -85,12 +86,15 @@ app.get('/api/download', (req, res) => {
     url,
   ];
 
-  const proc = spawn(ytDlpPath, args);
+  const proc = spawn(ytDlpBin, args);
   proc.stdout.pipe(res);
   proc.stderr.on('data', d => process.stderr.write(d));
   proc.on('error', err => {
-    console.error('yt-dlp error:', err.message);
+    console.error('spawn error:', err.message);
     if (!res.headersSent) res.status(500).json({ error: 'Download failed.' });
+  });
+  proc.on('close', code => {
+    if (code !== 0) console.error('yt-dlp exited with code', code);
   });
   req.on('close', () => proc.kill());
 });
