@@ -1,0 +1,16 @@
+{
+  "name": "velo-downloader",
+  "version": "1.0.0",
+  "description": "Video downloader powered by yt-dlp",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build": "pip install yt-dlp"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
