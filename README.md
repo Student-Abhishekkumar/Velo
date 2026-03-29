@@ -23,35 +23,6 @@
 
 ---
 
-## 🚀 Deploy to Railway
-
-### Steps
-
-1. **Push this repo to GitHub** (see section below)
-2. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**
-3. Select your `velo` repository
-4. Railway auto-detects `nixpacks.toml` — installs Node, Python, ffmpeg, and yt-dlp automatically
-5. Click **Deploy** — your app gets a live `*.up.railway.app` URL in ~2 minutes
-
-> No environment variables needed. Railway sets `PORT` automatically.
-
----
-
-## 📤 Push to GitHub
-
-```bash
-git init
-git add .
-git commit -m "Initial commit — Velo video downloader"
-git remote add origin https://github.com/YOUR_USERNAME/velo.git
-git branch -M main
-git push -u origin main
-```
-
-Then import the repo in Railway and it deploys automatically on every push.
-
----
-
 ## 💻 Run Locally
 
 ### Prerequisites
