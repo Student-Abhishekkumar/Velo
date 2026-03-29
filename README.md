@@ -50,7 +50,9 @@ Open **http://localhost:3000**
 ```
 velo/
 ├── public/
-│   └── index.html       # Frontend UI (single-page app)
+│   ├── index.html       # Main HTML UI
+│   ├── style.css        # UI styling
+│   └── script.js        # Frontend logic
 ├── docs/
 │   └── screenshot.png   # App screenshot (used in README)
 ├── server.js            # Express server + yt-dlp integration

@@ -3,10 +3,12 @@ nixPkgs = ["nodejs_20", "python311", "ffmpeg"]
 
 [phases.install]
 cmds = [
-  "npm install"
+  "npm install",
+  "pip install -U yt-dlp"
 ]
 
 [start]
 cmd = "node server.js"
 
-YOUTUBE_DL_SKIP_PYTHON_CHECK=1
+[variables]
+YOUTUBE_DL_SKIP_PYTHON_CHECK = "1"
