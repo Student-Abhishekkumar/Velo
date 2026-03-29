@@ -3,6 +3,7 @@
 const express  = require('express');
 const { spawn, execFile } = require('child_process');
 const path     = require('path');
+const fs       = require('fs');
 const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
@@ -11,7 +12,6 @@ const app  = express();
 const PORT = process.env.PORT || 3000;
 
 // Use system yt-dlp installed by nixpacks (or locally via pip)
-// Falls back to the npm-bundled binary if available
 function getYtDlpBin() {
   try {
     return require.resolve('youtube-dl-exec/bin/yt-dlp');
@@ -20,6 +20,27 @@ function getYtDlpBin() {
   }
 }
 const YT_DLP = getYtDlpBin();
+
+// Common anti-bot and configuration flags
+function getCommonArgs() {
+  const args = [
+    '--no-playlist',
+    '--no-warnings',
+    '--socket-timeout', '30',
+    '--force-ipv4', // Often fixes "Sign in to confirm you're not a bot" on cloud hosts
+    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    '--extractor-args', 'youtube:player-client=android,web;player-skip=webpage,configs,js',
+  ];
+
+  // If cookies.txt exists in the root, use it
+  const cookiesPath = path.join(__dirname, 'cookies.txt');
+  if (fs.existsSync(cookiesPath)) {
+    console.log('[yt-dlp] Using cookies.txt for authentication');
+    args.push('--cookies', cookiesPath);
+  }
+
+  return args;
+}
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -36,14 +57,13 @@ app.get('/api/info', async (req, res) => {
   }
 
   try {
-    const { stdout } = await execFileAsync(YT_DLP, [
+    const args = [
+      ...getCommonArgs(),
       '--dump-single-json',
-      '--no-playlist',
-      '--no-warnings',
-      '--socket-timeout', '15',
       url,
-    ], { timeout: 30_000 });
+    ];
 
+    const { stdout } = await execFileAsync(YT_DLP, args, { timeout: 45_000 });
     const info = JSON.parse(stdout);
 
     const secs = info.duration || 0;
@@ -65,13 +85,16 @@ app.get('/api/info', async (req, res) => {
   } catch (err) {
     const msg = (err.stderr || err.message || '').toString();
     console.error('[info] error:', msg);
-    if (msg.includes('Unsupported URL'))
-      return res.status(400).json({ error: 'This URL is not supported.' });
-    if (msg.includes('Private') || msg.includes('private'))
-      return res.status(400).json({ error: 'This video is private.' });
-    if (msg.includes('not available') || msg.includes('unavailable'))
-      return res.status(400).json({ error: 'This video is not available.' });
-    res.status(500).json({ error: 'Could not fetch video info. Check the URL and try again.' });
+    
+    if (msg.includes('Sign in to confirm')) {
+      return res.status(403).json({ 
+        error: 'YouTube is blocking the request. Please provide a cookies.txt file to authenticate.' 
+      });
+    }
+    if (msg.includes('Unsupported URL')) return res.status(400).json({ error: 'This URL is not supported.' });
+    if (msg.includes('Private')) return res.status(400).json({ error: 'This video is private.' });
+    
+    res.status(500).json({ error: 'Could not fetch video info.' });
   }
 });
 
@@ -84,14 +107,13 @@ app.get('/api/download', (req, res) => {
     return res.status(400).json({ error: 'Invalid URL.' });
   }
 
-  // Format → yt-dlp selector args
   const formatArgs = {
     mp3:   ['-x', '--audio-format', 'mp3', '--audio-quality', '0'],
     wav:   ['-x', '--audio-format', 'wav'],
     webm:  ['-f', 'bestvideo[ext=webm]+bestaudio[ext=webm]/bestvideo+bestaudio', '--merge-output-format', 'webm'],
-    '4k':  ['-f', 'bestvideo[height<=2160]+bestaudio/best[height<=2160]/best', '--merge-output-format', 'mp4'],
-    '1080p': ['-f', 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best', '--merge-output-format', 'mp4'],
-    '720p':  ['-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]/best',   '--merge-output-format', 'mp4'],
+    '4k':  ['-f', 'bestvideo[height<=2160]+bestaudio/best', '--merge-output-format', 'mp4'],
+    '1080p': ['-f', 'bestvideo[height<=1080]+bestaudio/best', '--merge-output-format', 'mp4'],
+    '720p':  ['-f', 'bestvideo[height<=720]+bestaudio/best', '--merge-output-format', 'mp4'],
     mp4:   ['-f', 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--merge-output-format', 'mp4'],
   };
 
@@ -106,48 +128,36 @@ app.get('/api/download', (req, res) => {
   res.setHeader('Content-Type', mime);
 
   const args = [
+    ...getCommonArgs(),
     ...fmtArgs,
-    '--no-playlist',
-    '--no-warnings',
-    '--socket-timeout', '15',
-    '-o', '-',   // stream to stdout
+    '-o', '-',
     url,
   ];
 
   console.log(`[download] fmt=${fmt} | url=${url}`);
 
   const proc = spawn(YT_DLP, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-
   proc.stdout.pipe(res);
 
   let stderrBuf = '';
   proc.stderr.on('data', chunk => {
-    const s = chunk.toString();
-    process.stderr.write(s);
-    stderrBuf += s;
+    stderrBuf += chunk.toString();
   });
 
   proc.on('error', err => {
     console.error('[download] spawn error:', err.message);
-    if (!res.headersSent) res.status(500).json({ error: 'Download failed — yt-dlp could not start.' });
-    else res.end();
+    if (!res.headersSent) res.status(500).json({ error: 'Download failed.' });
   });
 
   proc.on('close', code => {
-    if (code !== 0) {
-      console.error(`[download] yt-dlp exited with code ${code}\nstderr: ${stderrBuf}`);
-      if (!res.headersSent) res.status(500).json({ error: 'Download failed.' });
-      else res.end();
-    }
+    if (code !== 0) console.error(`[download] yt-dlp exited with code ${code}\nstderr: ${stderrBuf}`);
   });
 
-  // Kill process if client disconnects early
   req.on('close', () => {
     if (!proc.killed) proc.kill('SIGTERM');
   });
 });
 
-// ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n✅  Velo running at http://localhost:${PORT}\n`);
 });
