@@ -29,7 +29,7 @@ function getCommonArgs() {
     '--socket-timeout', '30',
     '--force-ipv4', // Often fixes "Sign in to confirm you're not a bot" on cloud hosts
     '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    '--extractor-args', 'youtube:player-client=android,web;player-skip=webpage,configs,js',
+    '--extractor-args', 'youtube:player-client=android,web',
   ];
 
   // If cookies.txt exists in the root, use it
